@@ -1,0 +1,21 @@
+[Unit]
+Description=Schedule Announcer — triggers at each scheduled block time
+
+[Timer]
+OnCalendar=*-*-* 08:00:00
+OnCalendar=*-*-* 08:30:00
+OnCalendar=*-*-* 09:30:00
+OnCalendar=*-*-* 11:00:00
+OnCalendar=*-*-* 13:00:00
+OnCalendar=*-*-* 14:15:00
+OnCalendar=*-*-* 18:00:00
+OnCalendar=*-*-* 20:00:00
+OnCalendar=*-*-* 21:00:00
+OnCalendar=*-*-* 21:20:00
+OnCalendar=*-*-* 23:00:00
+
+Persistent=true
+Unit=block-announcer.service
+
+[Install]
+WantedBy=timers.target

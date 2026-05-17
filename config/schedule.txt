@@ -1,0 +1,15 @@
+# Daily schedule reference for Schedule Announcer
+# Format: HH:MM - Activity description
+# The AI agent reads this file on each trigger to determine which block is active.
+
+08:00 - Anki kanji + Radiko (30min, 20 kanji/day)
+08:30 - Coding katas + Radiko (1h, logic warmup + passive listening)
+09:30 - Japanese textbooks (1h30m, Tettei 2pages + 500mon 2-6pages)
+11:00 - Main programming block (2h, projects, courses, frameworks)
+13:00 - Mon/Wed/Fri: Fitness + shower (1h15m) | Tue/Thu/Sat/Sun: Programming
+14:15 - Programming continues (3h45m)
+18:00 - Manga + extensive reading (2h, no dictionary, pure flow)
+20:00 - Relaxed programming + Radiko (1h, light courses, refactoring)
+21:00 - Anki mining (20min, new cards only)
+21:20 - Japanese YouTube / light course (until sleepy)
+23:00 - Sleep (9h, until 08:00)
