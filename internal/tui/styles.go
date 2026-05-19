@@ -8,7 +8,7 @@ import (
 
 // Kurox theme colors
 const (
-	colorBg          = "#06080F"
+	// No background (transparent — matches terminal theme)
 	colorText        = "#F3F6F9"
 	colorTextMuted   = "#5C6170"
 	colorPurpleLight = "#C4B5FD"
@@ -41,7 +41,6 @@ func PulseColor(tick int) string {
 // ── Base styles ──
 
 var BaseStyle = lipgloss.NewStyle().
-	Background(lipgloss.Color(colorBg)).
 	Foreground(lipgloss.Color(colorText))
 
 var TitleStyle = lipgloss.NewStyle().
@@ -149,33 +148,37 @@ func StatusDot(active bool) string {
 
 // ── Banner ──
 
-var BannerLines = []string{
-	`╔═══════════════════════════════════════════╗`,
-	`║                                           ║`,
-	`║     ███████╗ ██████╗██╗  ██╗ ██████╗     ║`,
-	`║     ██╔════╝██╔════╝██║  ██║██╔═══██╗    ║`,
-	`║     █████╗  ██║     ███████║██║   ██║    ║`,
-	`║     ██╔══╝  ██║     ██╔══██║██║   ██║    ║`,
-	`║     ███████╗╚██████╗██║  ██║╚██████╔╝    ║`,
-	`║     ╚══════╝ ╚═════╝╚═╝  ╚═╝ ╚═════╝     ║`,
-	`║                                           ║`,
-	`║          ██████╗ ██╗   ██╗                ║`,
-	`║          ██╔══██╗██║   ██║                ║`,
-	`║          █████╔╝██║   ██║                ║`,
-	`║          ██╔══██╗██║   ██║                ║`,
-	`║          ██║  ██║╚██████╔╝                ║`,
-	`║          ╚═╝  ╚═╝ ╚═════╝                 ║`,
-	`║                                           ║`,
-	`╚═══════════════════════════════════════════╝`,
+func RenderBanner(color string) string {
+	top := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(color)).
+		Render("╔══════════════════════════════════════╗")
+
+	name := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(color)).
+		Bold(true).
+		Render("║           EchoRoutine               ║")
+
+	sub := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(colorTextMuted)).
+		Render("║    Your AI-powered daily voice       ║")
+
+	empty := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(color)).
+		Render("║                                      ║")
+
+	bottom := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(color)).
+		Render("╚══════════════════════════════════════╝")
+
+	return lipgloss.JoinVertical(lipgloss.Center, top, empty, name, sub, empty, bottom)
 }
 
-func RenderBanner(color string) string {
-	style := lipgloss.NewStyle().
+// ── Banner (Compact) — used in editor/other screens ──
+
+func RenderBannerCompact(color string) string {
+	title := lipgloss.NewStyle().
 		Foreground(lipgloss.Color(color)).
-		Bold(true)
-	lines := make([]string, len(BannerLines))
-	for i, line := range BannerLines {
-		lines[i] = style.Render(line)
-	}
-	return lipgloss.JoinVertical(lipgloss.Center, lines...)
+		Bold(true).
+		Render("EchoRoutine")
+	return title
 }

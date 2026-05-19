@@ -24,8 +24,16 @@ func (m Model) View() string {
 		content = m.renderAbout()
 	}
 
+	w := m.Width
+	h := m.Height
+	if w == 0 {
+		w = 80
+	}
+	if h == 0 {
+		h = 40
+	}
 	return BaseStyle.Render(lipgloss.Place(
-		m.Width, m.Height,
+		w, h,
 		lipgloss.Center, lipgloss.Center,
 		content,
 	))
