@@ -26,19 +26,14 @@ CURRENT_MIN=$(date +%M)
 CURRENT_TIME="${CURRENT_HOUR}:${CURRENT_MIN}"
 
 # --- Language ---
-# Read language setting, default to Spanish
+# Read language setting — any language ElevenLabs supports.
+# Default: Spanish. Examples: English, Japanese, French, German, Korean, Chinese...
 ANNOUNCE_LANG="Spanish"
 if [ -f "${LANG_FILE}" ]; then
-    LANG_CONTENT=$(cat "${LANG_FILE}" | tr '[:upper:]' '[:lower:]' | xargs)
-    case "${LANG_CONTENT}" in
-        en|english)    ANNOUNCE_LANG="English" ;;
-        es|spanish)    ANNOUNCE_LANG="Spanish" ;;
-        jp|japanese)   ANNOUNCE_LANG="Japanese" ;;
-        pt|portuguese) ANNOUNCE_LANG="Portuguese" ;;
-        fr|french)     ANNOUNCE_LANG="French" ;;
-        de|german)     ANNOUNCE_LANG="German" ;;
-        *)             ANNOUNCE_LANG="Spanish" ;;
-    esac
+    LANG_CONTENT=$(head -1 "${LANG_FILE}" | xargs)
+    if [ -n "${LANG_CONTENT}" ]; then
+        ANNOUNCE_LANG="${LANG_CONTENT}"
+    fi
 fi
 
 # --- Stamp dedup with flock ---

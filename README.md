@@ -116,18 +116,15 @@ The script parses all `HH:MM` entries automatically. **No need to update the tim
 
 ### Language
 
-Create `~/.config/schedule-announcer/language.txt` with one of:
+Create `~/.config/schedule-announcer/language.txt` with your preferred language:
 
 ```
-es    # Spanish (default)
-en    # English
-jp    # Japanese
-pt    # Portuguese
-fr    # French
-de    # German
+Spanish
 ```
 
-The AI agent generates messages in your chosen language.
+Or any language ElevenLabs supports: `English`, `Japanese`, `French`, `German`, `Korean`, `Chinese`, `Portuguese`, etc.
+
+> Defaults to `Spanish` if the file doesn't exist.
 
 ### Voice
 
