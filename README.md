@@ -4,7 +4,7 @@ AI-powered voice and desktop notifications for your daily schedule blocks.
 
 At each scheduled block change, the system:
 1. Triggers an **AI agent** (OpenCode headless) that checks the current time and determines the active block
-2. Generates a **unique motivational message** in Spanish (fresh every time, never hardcoded)
+2. Generates a **unique motivational message** in your chosen language (fresh every time, never hardcoded)
 3. Speaks it aloud via **ElevenLabs TTS** (realistic voice)
 4. Shows a **KDE desktop notification**
 
@@ -20,16 +20,16 @@ Runs as a systemd **user timer** — starts automatically at boot, no terminal o
 │  (fires at each  │     │  (bash wrapper)   │     │  (headless AI agent) │
 │  block time)     │     │                   │     │                     │
 └─────────────────┘     └──────────────────┘     │  - checks time + day │
-                                                 │  - reads schedule     │
-                                                 │  - generates message  │
-                                                 └─────────┬───────────┘
-                                                           │
-                                             ┌─────────────┴─────────────┐
-                                             ▼                           ▼
-                                  ┌──────────────────┐      ┌──────────────────┐
-                                  │  ElevenLabs TTS   │      │  KDE notify-send │
-                                  │  (voice output)   │      │  (popup noti)    │
-                                  └──────────────────┘      └──────────────────┘
+                                                  │  - reads schedule     │
+                                                  │  - generates message  │
+                                                  └─────────┬───────────┘
+                                                            │
+                                              ┌─────────────┴─────────────┐
+                                              ▼                           ▼
+                                   ┌──────────────────┐      ┌──────────────────┐
+                                   │  ElevenLabs TTS   │      │  KDE notify-send │
+                                   │  (voice output)   │      │  (popup noti)    │
+                                   └──────────────────┘      └──────────────────┘
 ```
 
 Key insight: **Nothing is hardcoded.** Every message is generated fresh by the AI at runtime based on the current time, day of week, and schedule context. No message pools, no templates.
@@ -41,141 +41,144 @@ Key insight: **Nothing is hardcoded.** Every message is generated fresh by the A
 ### Required
 - **KDE Plasma** (for `notify-send`)
 - **OpenCode** — [opencode.ai](https://opencode.ai)
-- **GitHub Copilot** or other OpenCode-compatible AI provider
-- **curl** and **ffplay** (for ElevenLabs TTS audio playback)
 - **systemd** (user mode)
 
 ### Optional but recommended
-- **ElevenLabs API key** configured as an OpenCode MCP server for voice output
+- **elevenlabs-mcp-tts** — [github.com/kurojs/elevenlabs-mcp-tts](https://github.com/kurojs/elevenlabs-mcp-tts)
+  - MCP server for ElevenLabs TTS voice output
+  - Configure your API key in `~/.local/share/elevenlabs-mcp-tts/.env`:
+    ```env
+    ELEVENLABS_API_KEY=your_key_here
+    ELEVENLABS_VOICE_ID=h3KZVBOooxHZiKRxnsdE
+    ```
+- **curl** and **ffplay** (for audio playback)
+
+> **Without ElevenLabs:** the system still sends desktop notifications at each block change. Voice is optional.
 
 ---
 
 ## Installation
 
-### 1. Clone this repository
+### Quick install
 
 ```bash
 git clone https://github.com/kurojs/schedule-announcer.git
 cd schedule-announcer
-```
-
-### 2. Run the install script
-
-```bash
 chmod +x install.sh
 ./install.sh
 ```
 
-This copies:
-- `bin/block-announcer` → `~/.local/bin/block-announcer`
-- `config/block-announcer.service` → `~/.config/systemd/user/block-announcer.service`
-- `config/block-announcer.timer` → `~/.config/systemd/user/block-announcer.timer`
-- `config/schedule.txt` → `~/.config/block-announcer/schedule.txt`
+### What gets installed
 
-### 3. Customize your schedule
+| File | Destination |
+|------|-------------|
+| `bin/block-announcer` | `~/.local/bin/block-announcer` |
+| `config/block-announcer.service` | `~/.config/systemd/user/block-announcer.service` |
+| `config/block-announcer.timer` | `~/.config/systemd/user/block-announcer.timer` |
+| `config/schedule.txt` | `~/.config/schedule-announcer/schedule.txt` |
 
-Edit `~/.config/block-announcer/schedule.txt` with your own daily schedule.
-The format is:
-
-```
-08:00 - Activity name (description)
-08:30 - Another activity
-...
-```
-
-### 4. Enable the timer
+### Enable the timer
 
 ```bash
 systemctl --user daemon-reload
-systemctl --user enable block-announcer.timer
-systemctl --user start block-announcer.timer
+systemctl --user enable --now block-announcer.timer
 ```
 
-### 5. Enable lingering (for boot autostart)
-
-For the timer to start automatically when the computer boots (without needing to log into the desktop first):
+### Enable boot autostart
 
 ```bash
 sudo loginctl enable-linger $USER
 ```
 
-After this, reboot or log out/in and the timer will be active perpetually.
-
-### 6. Verify it's working
+### Verify
 
 ```bash
 systemctl --user status block-announcer.timer
 systemctl --user list-timers --all | grep block-announcer
 ```
 
-You should see the next scheduled trigger time.
-
 ---
 
-## Testing
+## Configuration
 
-To test the system at any time (even between blocks):
+### Schedule
 
-```bash
-# Run the service directly (will only fire if current time matches a block)
-systemctl --user start block-announcer.service
+Edit `~/.config/schedule-announcer/schedule.txt`:
 
-# Or check the logs
-journalctl --user -u block-announcer.service -n 20 --no-pager
+```
+08:00 - Anki kanji + Radiko
+08:30 - Coding katas
+09:30 - Japanese textbooks
+...
 ```
 
----
+The script parses all `HH:MM` entries automatically. **No need to update the timer** — it reads the schedule file fresh each time.
 
-## How the AI Generates Messages
+### Language
 
-The system does NOT use hardcoded messages. Instead:
+Create `~/.config/schedule-announcer/language.txt` with one of:
 
-1. The systemd timer fires at each block time (e.g., 08:00, 09:30, etc.)
-2. A bash script launches OpenCode in headless mode with the schedule file as context
-3. The AI agent:
-   - Checks the actual system time with `date`
-   - Determines which schedule block is active
-   - Generates a unique motivational message in Spanish
-   - Calls ElevenLabs TTS to speak it
-   - Sends a KDE notification
-4. The session ends
+```
+es    # Spanish (default)
+en    # English
+jp    # Japanese
+pt    # Portuguese
+fr    # French
+de    # German
+```
 
-This means **every message is unique** — generated fresh each time based on the AI's creativity.
-
----
-
-## Customization
+The AI agent generates messages in your chosen language.
 
 ### Voice
 
-To change the ElevenLabs voice, edit `~/.local/share/elevenlabs-mcp-tts/.env`:
+Edit `~/.local/share/elevenlabs-mcp-tts/.env`:
 
 ```env
 ELEVENLABS_VOICE_ID=your_voice_id_here
 ```
 
-### Language
+---
 
-The system language can be changed by forking this repo and updating the prompt instructions in `bin/block-announcer`. Change the phrase "en ESPAÑOL" to your preferred language.
+## Testing
 
-### Schedule
+```bash
+# Run the service directly
+systemctl --user start block-announcer.service
 
-Your schedule is at `~/.config/block-announcer/schedule.txt`. Edit freely — the AI reads it fresh on each trigger.
+# Check logs
+journalctl --user -u block-announcer.service -n 20 --no-pager
+```
+
+---
+
+## Fallback Behavior
+
+If OpenCode is not installed or fails:
+- A plain desktop notification is sent: *"⛩️ Schedule: HH:MM — ¡Hora del bloque!"*
+- No AI-generated message, no TTS voice
+
+If ElevenLabs TTS is not configured:
+- The AI still generates the message and sends the notification
+- Voice output is skipped
 
 ---
 
 ## File Structure
 
 ```
-~/.config/block-announcer/
+~/.config/schedule-announcer/
 ├── schedule.txt        # Your daily schedule
+└── language.txt        # Language setting (es/en/jp/...)
 
 ~/.local/bin/
 └── block-announcer     # The trigger script
 
 ~/.config/systemd/user/
 ├── block-announcer.service  # systemd oneshot service
-└── block-announcer.timer    # systemd timer (11 daily triggers)
+└── block-announcer.timer    # systemd timer
+
+~/.local/share/elevenlabs-mcp-tts/
+└── .env                     # ElevenLabs API config (optional)
 ```
 
 ---
@@ -187,9 +190,34 @@ systemctl --user stop block-announcer.timer
 systemctl --user disable block-announcer.timer
 rm -f ~/.config/systemd/user/block-announcer.*
 rm -f ~/.local/bin/block-announcer
-rm -rf ~/.config/block-announcer
+rm -rf ~/.config/schedule-announcer
 systemctl --user daemon-reload
 ```
+
+---
+
+## Roadmap
+
+- [x] AI-generated messages with OpenCode
+- [x] ElevenLabs TTS integration
+- [x] Multi-language support
+- [x] Desktop notifications with fallback
+- [ ] **schedule-tui** — Bubbletea TUI for:
+  - Visual schedule editor
+  - Language selector
+  - ElevenLabs API key setup
+  - One-click install & enable
+- [ ] **AUR package** — `yay -S schedule-announcer`
+
+---
+
+## Built With
+
+- **OpenCode** — AI agent runner
+- **elevenlabs-mcp-tts** — ElevenLabs voice via MCP
+- **systemd** — user timer scheduling
+- **Bash** — lightweight trigger script
+- **Go + Bubbletea** — (upcoming) TUI installer and editor
 
 ---
 

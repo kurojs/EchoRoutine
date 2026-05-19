@@ -1,0 +1,14 @@
+# System files
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+*.log
+
+# Binaries
+schedule-tui

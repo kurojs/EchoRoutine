@@ -5,55 +5,121 @@ set -euo pipefail
 # Launches OpenCode in headless mode. The AI agent checks the actual system
 # time, determines the active block, generates a motivational message, and
 # outputs it via ElevenLabs TTS + KDE notification.
+#
+# Dependencies:
+#   - OpenCode CLI (https://opencode.ai)
+#   - elevenlabs-mcp-tts (https://github.com/kurojs/elevenlabs-mcp-tts)
+#   - notify-send (libnotify)
+#   - systemd (user mode)
+#
+# Config:
+#   ~/.config/schedule-announcer/schedule.txt — your daily schedule
 
-SCHEDULE_FILE="${HOME}/.config/block-announcer/schedule.txt"
-STAMP_FILE="/tmp/block-announcer-last"
+CONFIG_DIR="${HOME}/.config/schedule-announcer"
+SCHEDULE_FILE="${CONFIG_DIR}/schedule.txt"
+LANG_FILE="${CONFIG_DIR}/language.txt"
+STAMP_FILE="/tmp/schedule-announcer-last"
+LOCK_FILE="/tmp/schedule-announcer.lock"
 
 CURRENT_HOUR=$(date +%H)
 CURRENT_MIN=$(date +%M)
 CURRENT_TIME="${CURRENT_HOUR}:${CURRENT_MIN}"
 
-# Prevent re-announcing the same minute
-if [ -f "${STAMP_FILE}" ]; then
-    LAST=$(cat "${STAMP_FILE}")
-    if [ "${LAST}" = "${CURRENT_TIME}" ]; then
+# --- Language ---
+# Read language setting, default to Spanish
+ANNOUNCE_LANG="Spanish"
+if [ -f "${LANG_FILE}" ]; then
+    LANG_CONTENT=$(cat "${LANG_FILE}" | tr '[:upper:]' '[:lower:]' | xargs)
+    case "${LANG_CONTENT}" in
+        en|english)    ANNOUNCE_LANG="English" ;;
+        es|spanish)    ANNOUNCE_LANG="Spanish" ;;
+        jp|japanese)   ANNOUNCE_LANG="Japanese" ;;
+        pt|portuguese) ANNOUNCE_LANG="Portuguese" ;;
+        fr|french)     ANNOUNCE_LANG="French" ;;
+        de|german)     ANNOUNCE_LANG="German" ;;
+        *)             ANNOUNCE_LANG="Spanish" ;;
+    esac
+fi
+
+# --- Stamp dedup with flock ---
+# Prevents re-announcing the same minute (defense against race conditions)
+(
+    flock -n 9 || exit 0
+
+    if [ -f "${STAMP_FILE}" ]; then
+        LAST=$(cat "${STAMP_FILE}")
+        if [ "${LAST}" = "${CURRENT_TIME}" ]; then
+            exit 0
+        fi
+    fi
+
+    # --- Read block times from schedule.txt ---
+    if [ ! -f "${SCHEDULE_FILE}" ]; then
+        echo "schedule.txt not found at ${SCHEDULE_FILE}" >&2
+        notify-send --urgency=critical --expire-time=10000 \
+            "⚠️ Schedule Announcer" "schedule.txt no encontrado en ${SCHEDULE_FILE}"
+        exit 1
+    fi
+
+    # Extract HH:MM from schedule.txt lines like "08:00 - Activity"
+    BLOCK_TIMES=$(grep -oP '^\s*\d{2}:\d{2}' "${SCHEDULE_FILE}" | tr '\n' ' ')
+
+    if [ -z "${BLOCK_TIMES}" ]; then
+        echo "No valid block times found in ${SCHEDULE_FILE}" >&2
+        notify-send --urgency=critical --expire-time=10000 \
+            "⚠️ Schedule Announcer" "No se encontraron horarios válidos en schedule.txt"
+        exit 1
+    fi
+
+    MATCH=0
+    for t in ${BLOCK_TIMES}; do
+        if [ "${t}" = "${CURRENT_TIME}" ]; then
+            MATCH=1
+            break
+        fi
+    done
+
+    if [ "${MATCH}" = "0" ]; then
         exit 0
     fi
-fi
 
-# All schedule block times (the AI determines the correct block based on weekday)
-BLOCK_TIMES="08:00 08:30 09:30 11:00 13:00 14:15 18:00 20:00 21:00 21:20 23:00"
+    # Mark this minute as announced
+    echo "${CURRENT_TIME}" > "${STAMP_FILE}"
 
-MATCH=0
-for t in ${BLOCK_TIMES}; do
-    if [ "${t}" = "${CURRENT_TIME}" ]; then
-        MATCH=1
-        break
+    # --- Launch OpenCode AI agent ---
+    if ! command -v opencode &>/dev/null; then
+        notify-send --urgency=normal --expire-time=8000 \
+            "⛩️ Schedule: ${CURRENT_TIME}" \
+            "¡Hora del bloque! (OpenCode no disponible — instalalo para mensajes AI + TTS)"
+        exit 1
     fi
-done
 
-if [ "${MATCH}" = "0" ]; then
-    exit 0
-fi
-
-echo "${CURRENT_TIME}" > "${STAMP_FILE}"
-
-if [ ! -f "${SCHEDULE_FILE}" ]; then
-    echo "schedule.txt not found at ${SCHEDULE_FILE}" >&2
-    exit 1
-fi
-
-exec opencode run \
-    --agent dangerous-gentleman \
-    --dangerously-skip-permissions \
-    --file "${SCHEDULE_FILE}" \
-    --title "block-announcer ${CURRENT_TIME}" \
-    "Block Announcer — schedule change detected at ${CURRENT_TIME}.
+    # Build the prompt with the selected language
+    PROMPT=$(cat <<PROMPT_EOF
+Block Announcer — schedule change detected at ${CURRENT_TIME}.
 
 1. Check the actual system time with: date '+%H:%M' and day of week with: date '+%u' (1=Mon..7=Sun).
 2. Using the schedule file provided, determine which block corresponds to the current time. If it's 13:00, Mon/Wed/Fri (days 1,3,5) is fitness/break, other days is programming.
 3. If the current time does NOT match any block exactly, respond with only: NO_BLOCK
-4. If it matches, generate a SHORT motivational message (1-2 sentences) in SPANISH for that specific block. It MUST be creative, unique every time, with personality. No emojis.
+4. If it matches, generate a SHORT motivational message (1-2 sentences) in ${ANNOUNCE_LANG} for that specific block. It MUST be creative, unique every time, with personality. No emojis.
 5. Use the elevenlabs-tts_text_to_speech MCP tool to speak the message aloud with voice_id h3KZVBOooxHZiKRxnsdE.
 6. Run: notify-send --urgency=normal --expire-time=8000 --icon=face-smile '⛩️ BLOCK_NAME_HERE' 'MESSAGE_HERE'
-7. Reply only: LISTO"
+7. Reply only: LISTO
+PROMPT_EOF
+)
+
+    if ! opencode run \
+        --agent dangerous-gentleman \
+        --dangerously-skip-permissions \
+        --file "${SCHEDULE_FILE}" \
+        --title "block-announcer ${CURRENT_TIME}" \
+        "${PROMPT}"; then
+
+        # Fallback: OpenCode failed, send a basic notification
+        notify-send --urgency=normal --expire-time=8000 \
+            "⛩️ Schedule: ${CURRENT_TIME}" \
+            "¡Hora del bloque! (AI no respondió — revisá tu conexión o API key)"
+        exit 1
+    fi
+
+) 9>"${LOCK_FILE}"
