@@ -10,5 +10,9 @@ Thumbs.db
 # Build artifacts
 *.log
 
-# Binaries
-schedule-tui
+# Go binaries (built from cmd/)
+bin/echoroutine
+module-skeleton.txt
+
+# Local Pi runtime state
+.atl/

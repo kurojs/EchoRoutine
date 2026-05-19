@@ -9,7 +9,7 @@ CONFDIR="${HOME}/.config/schedule-announcer"
 SERVICEDIR="${HOME}/.config/systemd/user"
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-echo "📦 Installing Schedule Announcer..."
+echo "📦 Installing EchoRoutine..."
 echo ""
 
 # --- Prerequisite validation ---
@@ -59,10 +59,24 @@ mkdir -p "${BINDIR}"
 mkdir -p "${CONFDIR}"
 mkdir -p "${SERVICEDIR}"
 
-# Bin
+# Bin — trigger script
 cp "${REPO_DIR}/bin/block-announcer" "${BINDIR}/block-announcer"
 chmod +x "${BINDIR}/block-announcer"
 echo "  ✓ ${BINDIR}/block-announcer"
+
+# Bin — TUI (EchoRoutine), requires Go
+if command -v go &>/dev/null; then
+    echo "  🔨 Building EchoRoutine TUI..."
+    TUI_BIN="${REPO_DIR}/bin/echoroutine"
+    if [ ! -f "${TUI_BIN}" ]; then
+        (cd "${REPO_DIR}" && go build -o "${TUI_BIN}" ./cmd/echoroutine/)
+    fi
+    cp "${TUI_BIN}" "${BINDIR}/echoroutine"
+    chmod +x "${BINDIR}/echoroutine"
+    echo "  ✓ ${BINDIR}/echoroutine"
+else
+    echo "  ∼ Go not found — skipping TUI build (install Go to use the TUI)"
+fi
 
 # Config
 if [ ! -f "${CONFDIR}/schedule.txt" ]; then
@@ -82,9 +96,9 @@ echo ""
 echo "✅ Installation complete!"
 echo ""
 echo "Next steps:"
-echo "  1. Edit your schedule:  nano ${CONFDIR}/schedule.txt"
-echo "  2. (Optional) Set language:  echo 'English' > ${CONFDIR}/language.txt"
-echo "     Any language ElevenLabs supports (English, Japanese, French, Korean...)"
+echo "  1. Configure:  echoroutine"
+echo "     (TUI — edit schedule, pick language, manage timer)"
+echo "  2. Or edit manually:  nano ${CONFDIR}/schedule.txt"
 echo "  3. Enable the timer:"
 echo "     systemctl --user daemon-reload"
 echo "     systemctl --user enable --now block-announcer.timer"
