@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // ── Config path detection ──
@@ -231,4 +232,25 @@ func toggleTimer(enable bool) error {
 		return fmt.Errorf("systemctl %s failed: %w\n%s", action, err, string(out))
 	}
 	return nil
+}
+
+// ── Next block ──
+
+func getNextBlock(blocks []ScheduleBlock) (ScheduleBlock, bool) {
+	if len(blocks) == 0 {
+		return ScheduleBlock{}, false
+	}
+
+	now := time.Now()
+	currentMin := now.Hour()*60 + now.Minute()
+
+	for _, b := range blocks {
+		h, m := parseTime(b.Time)
+		blockMin := h*60 + m
+		if blockMin > currentMin {
+			return b, true
+		}
+	}
+	// All passed for today — wrap to first block tomorrow
+	return blocks[0], true
 }

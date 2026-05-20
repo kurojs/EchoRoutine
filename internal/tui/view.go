@@ -63,11 +63,14 @@ func (m Model) renderDashboard() string {
 	// MCP Voice status (check if elevenlabs-mcp-tts is configured)
 	mcpStatus := MutedStyle.Render(fmt.Sprintf("  %s  Voice:     %s", StatusDot(isMCPConfigured()), mcpDisplay()))
 
-	// Next block
+	// Next block (based on real current time)
 	var nextBlockStr string
 	if m.IsEnabled && len(m.Blocks) > 0 {
-		b := m.Blocks[0]
-		nextBlockStr = GreenStyle.Render(fmt.Sprintf("\n  ◉  Next:  %s — %s", b.Time, b.Label))
+		if b, ok := getNextBlock(m.Blocks); ok {
+			nextBlockStr = GreenStyle.Render(fmt.Sprintf("\n  ◉  Next:  %s — %s", b.Time, b.Label))
+		} else {
+			nextBlockStr = MutedStyle.Render("\n  ◉  No upcoming blocks")
+		}
 	} else {
 		nextBlockStr = MutedStyle.Render("\n  ◉  No upcoming blocks")
 	}
@@ -432,6 +435,14 @@ func (m Model) renderAbout() string {
   Part of the kurojs ecosystem.
 
   github.com/kurojs/EchoRoutine
+
+ ── Dependencies ──
+
+  OpenCode (headless AI runner)
+    → github.com/opencode-ai/opencode
+
+  elevenlabs-mcp-tts (voice engine)
+    → github.com/kurojs/elevenlabs-mcp-tts
 
  ── Quick start ──
 

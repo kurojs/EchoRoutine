@@ -1,223 +1,202 @@
-# Schedule Announcer
+<p align="center">
+  <img src="https://img.shields.io/badge/status-active-success?color=%2386EFAC&style=flat-square" alt="Status">
+  <img src="https://img.shields.io/badge/platform-linux-%23A78BFA?style=flat-square" alt="Platform">
+  <img src="https://img.shields.io/badge/kde-plasma-%23C4B5FD?style=flat-square" alt="KDE">
+  <img src="https://img.shields.io/badge/license-MIT-%2386EFAC?style=flat-square" alt="License">
+</p>
 
-AI-powered voice and desktop notifications for your daily schedule blocks.
+<h1 align="center" style="color: #C4B5FD; font-weight: 700;">EchoRoutine</h1>
 
-At each scheduled block change, the system:
-1. Triggers an **AI agent** (OpenCode headless) that checks the current time and determines the active block
-2. Generates a **unique motivational message** in your chosen language (fresh every time, never hardcoded)
-3. Speaks it aloud via **ElevenLabs TTS** (realistic voice)
-4. Shows a **KDE desktop notification**
+<p align="center" style="color: #A78BFA; font-size: 1.15em;">
+  <em>Your AI-powered daily routine voice assistant</em>
+</p>
 
-Runs as a systemd **user timer** — starts automatically at boot, no terminal or manual action needed.
+<p align="center">
+  Each block of your day gets announced via ElevenLabs TTS with custom AI motivation —<br>
+  because your schedule deserves a voice.
+</p>
 
----
+<br>
 
-## How It Works
+<table align="center">
+  <tr>
+    <td width="33%"><img src="https://i.imgur.com/wdlRlHQ.png" alt="Dashboard" width="100%"></td>
+    <td width="33%"><img src="https://i.imgur.com/xiLPHBW.png" alt="Schedule Editor" width="100%"></td>
+    <td width="33%"><img src="https://i.imgur.com/Mz8RHpw.png" alt="Language Selector" width="100%"></td>
+  </tr>
+  <tr align="center">
+    <td style="color: #5C6170;"><small>Dashboard animated banner</small></td>
+    <td style="color: #5C6170;"><small>Schedule editor</small></td>
+    <td style="color: #5C6170;"><small>Language selector</small></td>
+  </tr>
+</table>
 
-```
-┌─────────────────┐     ┌──────────────────┐     ┌─────────────────────┐
-│  systemd timer   │────▶│  block-announcer  │────▶│  opencode run        │
-│  (fires at each  │     │  (bash wrapper)   │     │  (headless AI agent) │
-│  block time)     │     │                   │     │                     │
-└─────────────────┘     └──────────────────┘     │  - checks time + day │
-                                                  │  - reads schedule     │
-                                                  │  - generates message  │
-                                                  └─────────┬───────────┘
-                                                            │
-                                              ┌─────────────┴─────────────┐
-                                              ▼                           ▼
-                                   ┌──────────────────┐      ┌──────────────────┐
-                                   │  ElevenLabs TTS   │      │  KDE notify-send │
-                                   │  (voice output)   │      │  (popup noti)    │
-                                   └──────────────────┘      └──────────────────┘
-```
-
-Key insight: **Nothing is hardcoded.** Every message is generated fresh by the AI at runtime based on the current time, day of week, and schedule context. No message pools, no templates.
-
----
-
-## Prerequisites
-
-### Required
-- **KDE Plasma** (for `notify-send`)
-- **OpenCode** — [opencode.ai](https://opencode.ai)
-- **systemd** (user mode)
-
-### Optional but recommended
-- **elevenlabs-mcp-tts** — [github.com/kurojs/elevenlabs-mcp-tts](https://github.com/kurojs/elevenlabs-mcp-tts)
-  - MCP server for ElevenLabs TTS voice output
-  - Configure your API key in `~/.local/share/elevenlabs-mcp-tts/.env`:
-    ```env
-    ELEVENLABS_API_KEY=your_key_here
-    ELEVENLABS_VOICE_ID=h3KZVBOooxHZiKRxnsdE
-    ```
-- **curl** and **ffplay** (for audio playback)
-
-> **Without ElevenLabs:** the system still sends desktop notifications at each block change. Voice is optional.
+<br>
 
 ---
 
-## Installation
+## ✨ Features
 
-### Quick install
+- **🗣️ AI Voice Announcements** — each block transition triggers a unique ElevenLabs TTS message
+- **📋 Visual Schedule Editor** — TUI with intuitive time picker (↑↓ arrows, Tab to cycle fields)
+- **🌍 100+ Languages** — extensive voice language selector for ElevenLabs
+- **🎨 Kurox Theme** — purple (`#A78BFA`) × green (`#86EFAC`) on dark terminal
+- **⏰ systemd Timer Integration** — runs headless via OpenCode, survives reboots
+- **💬 Fallback Notifications** — desktop `notify-send` when TTS is unavailable
+- **🛠️ TUI + Headless** — configure visually or edit files directly
+- **🔄 Auto-resume** — announces the last block on boot if you missed it
+
+---
+
+## 🚀 Installation
+
+### Prerequisites
+
+| Dependency | Why | Install |
+|------------|-----|---------|
+| [OpenCode](https://github.com/opencode-ai/opencode) | Headless AI runner for announcements | [Guide](https://opencode.ai/docs/install) |
+| [elevenlabs-mcp-tts](https://github.com/kurojs/elevenlabs-mcp-tts) | ElevenLabs TTS voice engine | `git clone` + setup |
+| `notify-send` | Desktop notifications (libnotify) | `sudo pacman -S libnotify` |
+| `systemd` | Timer service (user mode) | Built-in on Arch |
+
+### Quick Install
 
 ```bash
-git clone https://github.com/kurojs/schedule-announcer.git
-cd schedule-announcer
-chmod +x install.sh
+git clone https://github.com/kurojs/EchoRoutine
+cd EchoRoutine
 ./install.sh
 ```
 
-### What gets installed
+This copies the trigger script, TUI binary (requires Go), config files, and systemd units.
 
-| File | Destination |
-|------|-------------|
-| `bin/block-announcer` | `~/.local/bin/block-announcer` |
-| `config/block-announcer.service` | `~/.config/systemd/user/block-announcer.service` |
-| `config/block-announcer.timer` | `~/.config/systemd/user/block-announcer.timer` |
-| `config/schedule.txt` | `~/.config/schedule-announcer/schedule.txt` |
+### Manual Build (TUI)
 
-### Enable the timer
+```bash
+go build -o bin/echoroutine ./cmd/echoroutine/
+./bin/echoroutine
+```
+
+### Enable at Boot
 
 ```bash
 systemctl --user daemon-reload
 systemctl --user enable --now block-announcer.timer
-```
-
-### Enable boot autostart
-
-```bash
-sudo loginctl enable-linger $USER
-```
-
-### Verify
-
-```bash
-systemctl --user status block-announcer.timer
-systemctl --user list-timers --all | grep block-announcer
+loginctl enable-linger $USER   # survives reboot
 ```
 
 ---
 
-## Configuration
+## 🎮 Usage
 
-### Schedule
-
-Edit `~/.config/schedule-announcer/schedule.txt`:
+Run `echoroutine` to launch the TUI configuration dashboard:
 
 ```
-08:00 - Anki kanji + Radiko
-08:30 - Coding katas
-09:30 - Japanese textbooks
-...
+╔══════════════════════════════════════╗
+║           EchoRoutine               ║    ← animated color pulse
+║    Your AI-powered daily voice       ║
+╚══════════════════════════════════════╝
+
+  ●  Schedule:  Active  (7 blocks)
+  ○  Language:  English
+  ●  Voice:     ✓ Configured
+
+  ◉  Next:  14:00 — 日本語の勉強
+
+  ▸ Edit Schedule
+    Settings
+    Install / Manage
+    About
+    Exit
 ```
 
-The script parses all `HH:MM` entries automatically. **No need to update the timer** — it reads the schedule file fresh each time.
+### TUI Screens
+
+| Screen | What you can do |
+|--------|----------------|
+| **Dashboard** | See status at a glance, navigate to other screens |
+| **Edit Schedule** | Add/edit/delete blocks. ↑↓ changes hour/minute, Tab cycles fields |
+| **Settings** | Pick language, check ElevenLabs MCP status |
+| **Install / Manage** | Install service, pause/resume announcements |
+| **About** | Dependencies, version info |
+
+### Schedule Format
+
+Edit `~/.config/echoroutine/schedule.txt` directly or use the TUI:
+
+```
+# EchoRoutine — Daily Schedule
+# Format: HH:MM Label
+
+07:00 Morning Routine
+09:00 Deep Work
+12:00 Lunch Break
+14:00 日本語の勉強
+16:00 Project Work
+18:00 Exercise
+20:00 Evening Wind-down
+```
+
+> Times are in **24h format**. Blocks are announced in order. No overlapping times.
 
 ### Language
 
-Create `~/.config/schedule-announcer/language.txt` with your preferred language:
-
-```
-Spanish
-```
-
-Or any language ElevenLabs supports: `English`, `Japanese`, `French`, `German`, `Korean`, `Chinese`, `Portuguese`, etc.
-
-> Defaults to `Spanish` if the file doesn't exist.
-
-### Voice
-
-Edit `~/.local/share/elevenlabs-mcp-tts/.env`:
-
-```env
-ELEVENLABS_VOICE_ID=your_voice_id_here
-```
-
----
-
-## Testing
+Pick from 100+ ElevenLabs-supported languages in the TUI Settings, or:
 
 ```bash
-# Run the service directly
-systemctl --user start block-announcer.service
+echo "Japanese - ja-JP" > ~/.config/echoroutine/language.txt
+```
 
-# Check logs
-journalctl --user -u block-announcer.service -n 20 --no-pager
+Any language string ElevenLabs supports works — English, Japanese, Korean, French, etc.
+
+---
+
+## 🏗️ Architecture
+
+```
+                   ┌──────────────────┐
+                   │   systemd timer  │  ← runs every minute
+                   │  (headless mode) │
+                   └────────┬─────────┘
+                            │
+                   ┌────────▼─────────┐
+                   │  block-announcer │  ← bash trigger script
+                   │  (Bash + flock)  │
+                   └────────┬─────────┘
+                            │
+              ┌─────────────┼─────────────┐
+              │             │             │
+     ┌────────▼───┐  ┌──────▼──────┐     │
+     │  OpenCode  │  │ notify-send │     │
+     │  + MCP     │  │ (fallback)  │     │
+     └────────┬───┘  └─────────────┘     │
+              │                          │
+     ┌────────▼───┐              ┌───────▼──────┐
+     │ ElevenLabs │              │  EchoRoutine │
+     │  TTS Voice │              │  TUI (config)│
+     └────────────┘              └──────────────┘
 ```
 
 ---
 
-## Fallback Behavior
+## 🔧 Dependencies
 
-If OpenCode is not installed or fails:
-- A plain desktop notification is sent: *"⛩️ Schedule: HH:MM — ¡Hora del bloque!"*
-- No AI-generated message, no TTS voice
+### [OpenCode](https://github.com/opencode-ai/opencode)
+The headless AI runner that generates daily motivation. EchoRoutine injects your current block into OpenCode's context and gets back a unique, contextual announcement — not the same message every day.
 
-If ElevenLabs TTS is not configured:
-- The AI still generates the message and sends the notification
-- Voice output is skipped
+### [elevenlabs-mcp-tts](https://github.com/kurojs/elevenlabs-mcp-tts)
+Kuro's MCP server that bridges OpenCode with ElevenLabs text-to-speech. Turns AI text into natural-sounding voice in any supported language.
 
 ---
 
-## File Structure
+## 🧪 Tips
 
-```
-~/.config/schedule-announcer/
-├── schedule.txt        # Your daily schedule
-└── language.txt        # Language setting (es/en/jp/...)
-
-~/.local/bin/
-└── block-announcer     # The trigger script
-
-~/.config/systemd/user/
-├── block-announcer.service  # systemd oneshot service
-└── block-announcer.timer    # systemd timer
-
-~/.local/share/elevenlabs-mcp-tts/
-└── .env                     # ElevenLabs API config (optional)
-```
+- **Try it first**: Run `./bin/block-announcer` manually to hear your first announcement
+- **Edit schedule**: The TUI editor is the easiest way, but `schedule.txt` is plain text
+- **Debug timer**: `systemctl --user status block-announcer.timer`
+- **Logs**: `journalctl --user -u block-announcer.service -f`
 
 ---
 
-## Uninstall
+## 📄 License
 
-```bash
-systemctl --user stop block-announcer.timer
-systemctl --user disable block-announcer.timer
-rm -f ~/.config/systemd/user/block-announcer.*
-rm -f ~/.local/bin/block-announcer
-rm -rf ~/.config/schedule-announcer
-systemctl --user daemon-reload
-```
-
----
-
-## Roadmap
-
-- [x] AI-generated messages with OpenCode
-- [x] ElevenLabs TTS integration
-- [x] Multi-language support
-- [x] Desktop notifications with fallback
-- [ ] **schedule-tui** — Bubbletea TUI for:
-  - Visual schedule editor
-  - Language selector
-  - ElevenLabs API key setup
-  - One-click install & enable
-- [ ] **AUR package** — `yay -S schedule-announcer`
-
----
-
-## Built With
-
-- **OpenCode** — AI agent runner
-- **elevenlabs-mcp-tts** — ElevenLabs voice via MCP
-- **systemd** — user timer scheduling
-- **Bash** — lightweight trigger script
-- **Go + Bubbletea** — (upcoming) TUI installer and editor
-
----
-
-## License
-
-MIT
+MIT © [kurojs](https://github.com/kurojs)
