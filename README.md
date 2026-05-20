@@ -74,7 +74,7 @@ loginctl enable-linger $USER
 
 | Dependency | Why | Install |
 |------------|-----|---------|
-| [OpenCode](https://github.com/opencode-ai/opencode) | Headless AI runner for announcements | [opencode.ai/docs/install](https://opencode.ai/docs/install) |
+| [OpenCode](https://github.com/anomalyco/opencode) | Headless AI runner for announcements | [anomalyco/opencode](https://github.com/anomalyco/opencode) |
 | [elevenlabs-mcp-tts](https://github.com/kurojs/elevenlabs-mcp-tts) | ElevenLabs TTS voice engine | `git clone` + setup |
 | `notify-send` | Desktop notifications (libnotify) | `sudo pacman -S libnotify` |
 | `systemd` | Timer service (user mode) | Built-in on Arch |
@@ -190,7 +190,7 @@ Any language string ElevenLabs supports works — English, Japanese, Korean, Fre
 
 ## Dependencies
 
-### [OpenCode](https://github.com/opencode-ai/opencode)
+### [OpenCode](https://github.com/anomalyco/opencode)
 The headless AI runner that generates daily motivation. EchoRoutine injects your current block into OpenCode's context and gets back a unique, contextual announcement — not the same canned message every day.
 
 ### [elevenlabs-mcp-tts](https://github.com/kurojs/elevenlabs-mcp-tts)
