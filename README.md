@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="https://img.shields.io/badge/status-active-success?color=%2386EFAC&style=flat-square" alt="Status">
-  <img src="https://img.shields.io/badge/platform-linux-%23A78BFA&style=flat-square" alt="Platform">
-  <img src="https://img.shields.io/badge/kde-plasma-%23C4B5FD&style=flat-square" alt="KDE">
-  <img src="https://img.shields.io/badge/license-MIT-%2386EFAC&style=flat-square" alt="License">
+  <img src="https://img.shields.io/badge/status-active-86EFAC?style=flat-square" alt="Status">
+  <img src="https://img.shields.io/badge/platform-linux-A78BFA?style=flat-square" alt="Platform">
+  <img src="https://img.shields.io/badge/kde-plasma-C4B5FD?style=flat-square" alt="KDE">
+  <img src="https://img.shields.io/badge/license-MIT-86EFAC?style=flat-square" alt="License">
 </p>
 
 <h1 align="center" style="color: #C4B5FD; font-weight: 700;">EchoRoutine</h1>
