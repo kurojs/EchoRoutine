@@ -109,7 +109,6 @@ PROMPT_EOF
 )
 
     if ! opencode run \
-        --agent dangerous-gentleman \
         --dangerously-skip-permissions \
         --file "${SCHEDULE_FILE}" \
         --title "block-announcer ${CURRENT_TIME}" \
