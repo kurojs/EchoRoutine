@@ -2,6 +2,7 @@ package tui
 
 import (
 	"bufio"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -9,30 +10,90 @@ import (
 	"strings"
 )
 
-// configDir returns the config directory relative to the home/install location
+// ── Config path detection ──
+
 func configDir() string {
-	// Try the repo's config dir first (development), then ~/.config/echoroutine
+	// Priority:
+	// 1. ~/.config/echoroutine/ (new standard)
+	// 2. Repo relative (dev mode — looks for config/ next to bin/)
+	// 3. ~/.config/schedule-announcer/ (legacy)
+
+	home := os.Getenv("HOME")
+
 	candidates := []string{
-		filepath.Join(execDir(), "..", "..", "config"),
-		filepath.Join(os.Getenv("HOME"), ".config", "echoroutine"),
-		filepath.Join(os.Getenv("HOME"), ".config", "schedule-announcer"),
+		filepath.Join(home, ".config", "echoroutine"),
+		filepath.Join(devConfigDir()),
+		filepath.Join(home, ".config", "schedule-announcer"),
 	}
+
 	for _, c := range candidates {
 		if info, err := os.Stat(c); err == nil && info.IsDir() {
 			return c
 		}
 	}
-	// Default to repo config
-	repoConfig := filepath.Join(execDir(), "..", "..", "config")
-	return repoConfig
+
+	// If none exist, default to ~/.config/echoroutine/ (create later if needed)
+	echoroutineDir := filepath.Join(home, ".config", "echoroutine")
+	os.MkdirAll(echoroutineDir, 0755)
+	return echoroutineDir
 }
 
-func execDir() string {
+func devConfigDir() string {
 	exe, err := os.Executable()
 	if err != nil {
-		return "."
+		return ""
 	}
-	return filepath.Dir(exe)
+	// Walk up from bin/ to find config/
+	dir := filepath.Dir(exe)
+	for i := 0; i < 4; i++ {
+		cfg := filepath.Join(dir, "config")
+		if info, err := os.Stat(cfg); err == nil && info.IsDir() {
+			return cfg
+		}
+		dir = filepath.Dir(dir)
+	}
+	return ""
+}
+
+// ── MCP / ElevenLabs detection ──
+
+func isMCPConfigured() bool {
+	// Method 1: Check if elevenlabs-mcp-tts source directory exists
+	mcpDir := filepath.Join(os.Getenv("HOME"), ".local", "share", "elevenlabs-mcp-tts")
+	if info, err := os.Stat(mcpDir); err == nil && info.IsDir() {
+		return true
+	}
+
+	// Method 2: Check OpenCode config for elevenlabs-tts MCP entry
+	opencodeConfig := filepath.Join(os.Getenv("HOME"), ".config", "opencode", "opencode.jsonc")
+	if data, err := os.ReadFile(opencodeConfig); err == nil {
+		content := string(data)
+		if strings.Contains(content, "elevenlabs-tts") || strings.Contains(content, "elevenlabs") {
+			return true
+		}
+	}
+
+	// Method 3: Check opencode.json
+	opencodeConfig2 := filepath.Join(os.Getenv("HOME"), ".config", "opencode", "opencode.json")
+	if data, err := os.ReadFile(opencodeConfig2); err == nil {
+		var cfg struct {
+			MCP map[string]interface{} `json:"mcp"`
+		}
+		if json.Unmarshal(data, &cfg) == nil {
+			for name := range cfg.MCP {
+				if strings.Contains(name, "elevenlabs") {
+					return true
+				}
+			}
+		}
+		// Also check raw string
+		content := string(data)
+		if strings.Contains(content, "elevenlabs-tts") || strings.Contains(content, "elevenlabs") {
+			return true
+		}
+	}
+
+	return false
 }
 
 // ── Schedule ──
@@ -41,16 +102,7 @@ func loadSchedule() []ScheduleBlock {
 	schedulePath := filepath.Join(configDir(), "schedule.txt")
 	file, err := os.Open(schedulePath)
 	if err != nil {
-		// Return defaults
-		return []ScheduleBlock{
-			{Time: "07:00", Label: "Morning Routine"},
-			{Time: "09:00", Label: "Deep Work"},
-			{Time: "12:00", Label: "Lunch Break"},
-			{Time: "14:00", Label: "日本語の勉強"},
-			{Time: "16:00", Label: "Project Work"},
-			{Time: "18:00", Label: "Exercise"},
-			{Time: "20:00", Label: "Evening Wind-down"},
-		}
+		return defaultSchedule()
 	}
 	defer file.Close()
 
@@ -62,22 +114,40 @@ func loadSchedule() []ScheduleBlock {
 			continue
 		}
 		parts := strings.SplitN(line, " ", 2)
-		if len(parts) >= 1 {
+		if len(parts) >= 1 && len(parts[0]) == 5 && parts[0][2] == ':' {
 			time := parts[0]
 			label := ""
 			if len(parts) >= 2 {
-				label = parts[1]
+				label = strings.TrimSpace(parts[1])
 			}
 			blocks = append(blocks, ScheduleBlock{Time: time, Label: label})
 		}
 	}
+	if len(blocks) == 0 {
+		return defaultSchedule()
+	}
 	return blocks
+}
+
+func defaultSchedule() []ScheduleBlock {
+	return []ScheduleBlock{
+		{Time: "07:00", Label: "Morning Routine"},
+		{Time: "09:00", Label: "Deep Work"},
+		{Time: "12:00", Label: "Lunch Break"},
+		{Time: "14:00", Label: "日本語の勉強"},
+		{Time: "16:00", Label: "Project Work"},
+		{Time: "18:00", Label: "Exercise"},
+		{Time: "20:00", Label: "Evening Wind-down"},
+	}
 }
 
 func saveSchedule(blocks []ScheduleBlock) error {
 	schedulePath := filepath.Join(configDir(), "schedule.txt")
+	// Ensure config dir exists
+	os.MkdirAll(filepath.Dir(schedulePath), 0755)
+
 	var lines []string
-	lines = append(lines, "# EchoRoutine Daily Schedule")
+	lines = append(lines, "# EchoRoutine — Daily Schedule")
 	lines = append(lines, "# Format: HH:MM Label")
 	lines = append(lines, "")
 	for _, b := range blocks {
@@ -99,32 +169,8 @@ func loadLanguage() string {
 
 func saveLanguage(lang string) error {
 	langPath := filepath.Join(configDir(), "language.txt")
+	os.MkdirAll(filepath.Dir(langPath), 0755)
 	return os.WriteFile(langPath, []byte(lang+"\n"), 0644)
-}
-
-// ── API Key ──
-
-func loadAPIKey() string {
-	key := os.Getenv("ELEVENLABS_API_KEY")
-	if key != "" {
-		return "configured"
-	}
-
-	keyPath := filepath.Join(configDir(), "elevenlabs.key")
-	data, err := os.ReadFile(keyPath)
-	if err != nil {
-		return ""
-	}
-	key = strings.TrimSpace(string(data))
-	if key != "" {
-		return "configured"
-	}
-	return ""
-}
-
-func saveAPIKey(key string) error {
-	keyPath := filepath.Join(configDir(), "elevenlabs.key")
-	return os.WriteFile(keyPath, []byte(key+"\n"), 0600)
 }
 
 // ── Systemd status ──
@@ -145,7 +191,27 @@ func isServiceInstalled() bool {
 }
 
 func installService() (string, error) {
-	installSh := filepath.Join(execDir(), "..", "..", "install.sh")
+	// Use install.sh — try repo path first, then relative to binary
+	home := os.Getenv("HOME")
+
+	candidates := []string{
+		filepath.Join(devConfigDir(), "..", "install.sh"),
+		filepath.Join(devConfigDir(), "..", "..", "install.sh"),
+		filepath.Join(home, ".local", "bin", "install.sh"),
+	}
+
+	var installSh string
+	for _, c := range candidates {
+		if info, err := os.Stat(c); err == nil && !info.IsDir() {
+			installSh = c
+			break
+		}
+	}
+
+	if installSh == "" {
+		return "", fmt.Errorf("install.sh not found — re-clone the repository or run install.sh manually")
+	}
+
 	cmd := exec.Command("bash", installSh)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
@@ -160,17 +226,9 @@ func toggleTimer(enable bool) error {
 		action = "disable"
 	}
 	cmd := exec.Command("systemctl", "--user", action, "block-announcer.timer")
-	return cmd.Run()
-}
-
-// ── Next block info ──
-
-func getNextBlock(blocks []ScheduleBlock) (ScheduleBlock, string) {
-	if len(blocks) == 0 {
-		return ScheduleBlock{}, ""
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("systemctl %s failed: %w\n%s", action, err, string(out))
 	}
-
-	// Simple approach: just return the first block for now
-	// In a full impl we'd parse times and compare with current time
-	return blocks[0], "scheduled"
+	return nil
 }

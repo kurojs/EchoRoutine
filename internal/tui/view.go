@@ -46,28 +46,28 @@ func (m Model) renderDashboard() string {
 
 	banner := RenderBanner(pulseColor)
 
-	nextBlock, _ := getNextBlock(m.Blocks)
-
-	// Status
+	// Schedule status
 	status := lipgloss.NewStyle().Foreground(lipgloss.Color(colorText)).Render(
 		fmt.Sprintf("\n  %s  Schedule:  %s  (%d blocks)",
-			StatusDot(m.ScheduleEnabled),
-			statusText(m.ScheduleEnabled),
+			StatusDot(m.IsEnabled),
+			statusText(m.IsEnabled),
 			len(m.Blocks),
 		),
 	)
 
+	// Language
 	langDisplay := m.Languages[m.SelectedLang]
 	langShort := strings.SplitN(langDisplay, " - ", 2)[0]
-
 	langStatus := MutedStyle.Render(fmt.Sprintf("  %s  Language:  %s", StatusDot(true), langShort))
 
-	apiStatus := MutedStyle.Render(fmt.Sprintf("  %s  API Key:   %s", StatusDot(m.APIKey != ""), apiKeyDisplay(m.APIKey)))
+	// MCP Voice status (check if elevenlabs-mcp-tts is configured)
+	mcpStatus := MutedStyle.Render(fmt.Sprintf("  %s  Voice:     %s", StatusDot(isMCPConfigured()), mcpDisplay()))
 
-	// Next block info
+	// Next block
 	var nextBlockStr string
-	if m.ScheduleEnabled && len(m.Blocks) > 0 {
-		nextBlockStr = GreenStyle.Render(fmt.Sprintf("\n  ◉  Next:  %s — %s", nextBlock.Time, nextBlock.Label))
+	if m.IsEnabled && len(m.Blocks) > 0 {
+		b := m.Blocks[0]
+		nextBlockStr = GreenStyle.Render(fmt.Sprintf("\n  ◉  Next:  %s — %s", b.Time, b.Label))
 	} else {
 		nextBlockStr = MutedStyle.Render("\n  ◉  No upcoming blocks")
 	}
@@ -87,13 +87,8 @@ func (m Model) renderDashboard() string {
 	}
 	menu := lipgloss.JoinVertical(lipgloss.Left, menuLines...)
 
-	// Subtitle
 	subtitle := AccentStyle.Render("\n  Your AI-powered daily routine voice  ")
 
-	// Divider
-	div := Divider
-
-	// Key hints
 	hints := lipgloss.JoinHorizontal(lipgloss.Left,
 		KeyHint("↑↓", "Navigate  "),
 		KeyHint("Enter", "Select  "),
@@ -105,17 +100,17 @@ func (m Model) renderDashboard() string {
 		banner,
 		subtitle,
 		"",
-		div,
+		Divider,
 		status,
 		langStatus,
-		apiStatus,
+		mcpStatus,
 		nextBlockStr,
 		"",
-		div,
+		Divider,
 		"",
 		menu,
 		"",
-		div,
+		Divider,
 		"",
 		hints,
 	)
@@ -128,55 +123,66 @@ func (m Model) renderDashboard() string {
 func (m Model) renderEditor() string {
 	var lines []string
 
-	title := TitleStyle.Render("Schedule Editor")
+	title := TitleStyle.Render("Edit Schedule")
 	lines = append(lines, title, "")
 
 	if m.DeleteConfirm {
-		confirmStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color(colorWarning)).
-			Bold(true)
+		confirmStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(colorWarning)).Bold(true)
 		lines = append(lines, confirmStyle.Render("  Delete this block? (y/n)"))
 		lines = append(lines, "")
 	}
 
 	// Block list
 	for i, block := range m.Blocks {
-		selected := i == m.Cursor && !m.EditorMode
+		selected := i == m.Cursor && !m.Editing
 		prefix := "  "
 		if selected {
 			prefix = "▸ "
 		}
 
 		var line string
-		if m.EditorMode && i == m.Cursor {
-			// Show editing state
-			timeDisplay := m.EditingTime
-			if m.EditField == 0 {
-				timeDisplay = lipgloss.NewStyle().
+		if m.Editing && i == m.EditBlock {
+			// Show editing state with time picker
+			hoursStr := fmt.Sprintf("%02d", m.EditHours)
+			minStr := fmt.Sprintf("%02d", m.EditMinutes)
+
+			var hoursDisplay, minDisplay, labelDisplay string
+
+			switch m.EditFocus {
+			case FocusHours:
+				hoursDisplay = lipgloss.NewStyle().
 					Foreground(lipgloss.Color(colorPurpleLight)).
 					Background(lipgloss.Color(colorSurface)).
-					Underline(true).
-					Render(m.EditingTime)
-			} else {
-				timeDisplay = MutedStyle.Render(m.EditingTime)
+					Bold(true).
+					Render(hoursStr)
+				minDisplay = MutedStyle.Render(minStr)
+			case FocusMinutes:
+				hoursDisplay = AccentStyle.Render(hoursStr)
+				minDisplay = lipgloss.NewStyle().
+					Foreground(lipgloss.Color(colorPurpleLight)).
+					Background(lipgloss.Color(colorSurface)).
+					Bold(true).
+					Render(minStr)
+			default:
+				hoursDisplay = AccentStyle.Render(hoursStr)
+				minDisplay = AccentStyle.Render(minStr)
 			}
 
-			labelDisplay := m.EditingLabel
-			if m.EditField == 1 {
+			if m.EditFocus == FocusLabel {
 				labelDisplay = lipgloss.NewStyle().
 					Foreground(lipgloss.Color(colorPurpleLight)).
 					Background(lipgloss.Color(colorSurface)).
-					Underline(true).
-					Render(m.EditingLabel)
+					Bold(true).
+					Render(m.EditLabel + "▌")
 			} else {
-				labelDisplay = MutedStyle.Render(m.EditingLabel)
+				labelDisplay = MutedStyle.Render(m.EditLabel)
 			}
 
-			line = fmt.Sprintf("%s %s  %s  [Tab to switch, Enter to save]",
-				prefix,
-				timeDisplay,
-				labelDisplay,
-			)
+			badge := lipgloss.NewStyle().
+				Foreground(lipgloss.Color(colorTextMuted)).
+				Render("[editing]")
+
+			line = fmt.Sprintf("%s %s:%s  %s  %s", prefix, hoursDisplay, minDisplay, labelDisplay, badge)
 		} else {
 			style := MutedStyle
 			if selected {
@@ -188,32 +194,49 @@ func (m Model) renderEditor() string {
 	}
 
 	// Add block option
-	addSelected := m.Cursor == len(m.Blocks) && !m.EditorMode
+	addSelected := m.Cursor == len(m.Blocks) && !m.Editing
 	lines = append(lines, MenuItemGreen("+ Add Block", addSelected))
 
 	lines = append(lines, "", Divider, "")
 
 	// Key hints
-	if m.EditorMode {
-		hints := lipgloss.JoinHorizontal(lipgloss.Left,
-			KeyHint("Tab", "Switch field  "),
-			KeyHint("Enter", "Save  "),
-			KeyHint("Esc", "Cancel"),
-		)
+	if m.Editing {
+		var hints string
+		switch m.EditFocus {
+		case FocusHours:
+			hints = lipgloss.JoinHorizontal(lipgloss.Left,
+				KeyHint("↑↓", "Hour  "),
+				KeyHint("Tab", "Minutes  "),
+				KeyHint("Enter", "Save  "),
+				KeyHint("Esc", "Cancel"),
+			)
+		case FocusMinutes:
+			hints = lipgloss.JoinHorizontal(lipgloss.Left,
+				KeyHint("↑↓", "Minute  "),
+				KeyHint("Tab", "Label  "),
+				KeyHint("Enter", "Save  "),
+				KeyHint("Esc", "Cancel"),
+			)
+		case FocusLabel:
+			hints = lipgloss.JoinHorizontal(lipgloss.Left,
+				KeyHint("Type", "Label text  "),
+				KeyHint("Enter", "Save  "),
+				KeyHint("Esc", "Cancel"),
+			)
+		}
 		lines = append(lines, hints)
 	} else {
 		hints := lipgloss.JoinHorizontal(lipgloss.Left,
 			KeyHint("↑↓", "Navigate  "),
 			KeyHint("Enter", "Edit  "),
 			KeyHint("d", "Delete  "),
-			KeyHint("t", "Toggle  "),
 			KeyHint("Esc", "Back"),
 		)
 		lines = append(lines, hints)
 	}
 
 	lines = append(lines, "")
-	status := fmt.Sprintf("  Blocks: %d | Status: %s", len(m.Blocks), statusText(m.ScheduleEnabled))
+	status := fmt.Sprintf("  %d blocks — times shown in 24h format", len(m.Blocks))
 	lines = append(lines, MutedStyle.Render(status))
 
 	return lipgloss.NewStyle().Padding(0, 2).Render(strings.Join(lines, "\n"))
@@ -227,7 +250,6 @@ func (m Model) renderLanguageSelector() string {
 	lines = append(lines, TitleStyle.Render("Select Language"))
 	lines = append(lines, "")
 
-	// Scrollable language list
 	visibleLanguages := m.Height - 8
 	if visibleLanguages < 5 {
 		visibleLanguages = 5
@@ -290,12 +312,15 @@ func (m Model) renderSettings() string {
 	langDisplay := m.Languages[m.SelectedLang]
 	langShort := strings.SplitN(langDisplay, " - ", 2)[0]
 
+	mcpOk := isMCPConfigured()
+
 	settings := []struct {
 		name  string
 		value string
+		desc  string
 	}{
-		{"Language", langShort},
-		{"API Key", apiKeyDisplay(m.APIKey)},
+		{"Language", langShort, "Voice language for announcements"},
+		{"ElevenLabs Voice", mcpDisplay(), "Voice engine (via OpenCode MCP)"},
 	}
 
 	for i, s := range settings {
@@ -312,10 +337,18 @@ func (m Model) renderSettings() string {
 
 		nameStyle := style.Render(s.name)
 		valueStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(colorText)).Render(s.value)
-		lines = append(lines, fmt.Sprintf("%s%s: %s", prefix, nameStyle, valueStyle))
+
+		// Show description on selected or always for MCP
+		descStr := ""
+		if !mcpOk && i == 1 {
+			descStr = "\n     " + WarningStyle.Render("Run: git clone https://github.com/kurojs/elevenlabs-mcp-tts")
+		} else if selected {
+			descStr = "\n     " + MutedStyle.Render(s.desc)
+		}
+
+		lines = append(lines, fmt.Sprintf("%s%s: %s%s", prefix, nameStyle, valueStyle, descStr))
 	}
 
-	// Back option
 	lines = append(lines, "")
 	backSelected := m.Cursor == 2
 	lines = append(lines, MenuItem("← Back", backSelected))
@@ -339,46 +372,41 @@ func (m Model) renderInstall() string {
 	lines = append(lines, TitleStyle.Render("Install / Manage"))
 	lines = append(lines, "")
 
-	// Status section
+	// Status section with descriptions
 	if m.IsInstalled {
-		lines = append(lines, GreenStyle.Render(fmt.Sprintf("  ◉ Service: Installed")))
-		if m.ScheduleEnabled {
-			lines = append(lines, GreenStyle.Render(fmt.Sprintf("  ◉ Timer:  Enabled")))
+		lines = append(lines, GreenStyle.Render("  ◉ Service installed"))
+		if m.IsEnabled {
+			lines = append(lines, GreenStyle.Render("  ◉ Timer active — announcements run on schedule"))
 		} else {
-			lines = append(lines, WarningStyle.Render(fmt.Sprintf("  ◉ Timer:  Disabled")))
+			lines = append(lines, WarningStyle.Render("  ◉ Timer paused — no announcements until enabled"))
 		}
 	} else {
-		lines = append(lines, MutedStyle.Render("  ◉ Service: Not installed"))
+		lines = append(lines, MutedStyle.Render("  ◉ Service not installed"))
+		lines = append(lines, MutedStyle.Render("    Install to enable automatic daily announcements"))
 	}
 	lines = append(lines, "")
 
 	// Status message
 	if m.StatusMsg != "" {
-		lines = append(lines, lipgloss.NewStyle().
-			Foreground(lipgloss.Color(colorGreen)).
-			Padding(0, 2).
-			Render(m.StatusMsg))
+		msgStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(colorGreen)).Padding(0, 2)
+		if strings.Contains(m.StatusMsg, "fail") || strings.Contains(m.StatusMsg, "Failed") {
+			msgStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(colorWarning)).Padding(0, 2)
+		}
+		lines = append(lines, msgStyle.Render(m.StatusMsg))
 		lines = append(lines, "")
 	}
 
-	// Menu
-	options := []string{}
-	if !m.IsInstalled {
-		options = append(options, "Install Service")
-	} else {
-		if m.ScheduleEnabled {
-			options = append(options, "Disable Timer")
-		} else {
-			options = append(options, "Enable Timer")
-		}
-	}
-	options = append(options, "← Back")
-
+	// Options
+	options := buildInstallOptions(m)
 	for i, opt := range options {
 		lines = append(lines, MenuItem(opt, m.Cursor == i))
 	}
 
 	lines = append(lines, "", Divider, "")
+	lines = append(lines, MutedStyle.Render("  EchoRoutine uses systemd --user timers"))
+	lines = append(lines, MutedStyle.Render("  Run at boot: loginctl enable-linger $USER"))
+	lines = append(lines, "")
+
 	hints := lipgloss.JoinHorizontal(lipgloss.Left,
 		KeyHint("↑↓", "Navigate  "),
 		KeyHint("Enter", "Execute  "),
@@ -398,25 +426,17 @@ func (m Model) renderAbout() string {
   EchoRoutine %s
 
   Your AI-powered daily routine voice assistant.
-  Built with ♥ for KDE Plasma | Arch Linux
+  Each time block gets announced via ElevenLabs TTS.
 
-  Each block of your day gets announced via
-  ElevenLabs TTS with custom AI motivation.
+  Built for KDE Plasma | Arch Linux
+  Part of the kurojs ecosystem.
 
-  EchoRoutine is part of the kurojs ecosystem.
-  github.com/kurojs/schedule-announcer
+  github.com/kurojs/EchoRoutine
 
- ── Tech Stack ──
-
-  Trigger: Bash + systemd timer
-  Voice:  ElevenLabs TTS (via MCP)
-  TUI:    Go + Bubbletea
-  Theme:  Kurox (purple × green)
-
- ── Commands ──
+ ── Quick start ──
 
   echoroutine    Launch this TUI
-  Ctrl+C / q     Quit
+  q / Ctrl+C     Quit
 `, lipgloss.NewStyle().Foreground(lipgloss.Color(colorPurpleLight)).Render("v1.0.0"))
 
 	content := lipgloss.NewStyle().
@@ -443,14 +463,14 @@ func (m Model) renderAbout() string {
 
 func statusText(enabled bool) string {
 	if enabled {
-		return lipgloss.NewStyle().Foreground(lipgloss.Color(colorGreen)).Render("Enabled")
+		return lipgloss.NewStyle().Foreground(lipgloss.Color(colorGreen)).Render("Active")
 	}
-	return lipgloss.NewStyle().Foreground(lipgloss.Color(colorTextMuted)).Render("Disabled")
+	return lipgloss.NewStyle().Foreground(lipgloss.Color(colorTextMuted)).Render("Paused")
 }
 
-func apiKeyDisplay(key string) string {
-	if key == "" {
-		return lipgloss.NewStyle().Foreground(lipgloss.Color(colorWarning)).Render("Not set")
+func mcpDisplay() string {
+	if isMCPConfigured() {
+		return lipgloss.NewStyle().Foreground(lipgloss.Color(colorGreen)).Render("✓ Configured")
 	}
-	return lipgloss.NewStyle().Foreground(lipgloss.Color(colorGreen)).Render("✓ Configured")
+	return lipgloss.NewStyle().Foreground(lipgloss.Color(colorWarning)).Render("Not configured")
 }

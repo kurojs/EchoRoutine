@@ -24,6 +24,15 @@ type ScheduleBlock struct {
 	Label string
 }
 
+// EditorFocus for the time/label editor
+type EditorFocus int
+
+const (
+	FocusHours  EditorFocus = iota
+	FocusMinutes
+	FocusLabel
+)
+
 type colorPulseMsg struct{}
 
 // Model holds all TUI state
@@ -46,21 +55,23 @@ type Model struct {
 	Languages    []string
 	SelectedLang int
 
-	// API Key
-	APIKey string
-
 	// Install status
 	IsInstalled bool
+	IsEnabled   bool
 	StatusMsg   string
 
 	// Editor state
-	EditorMode    bool   // true = editing label, false = navigating
-	EditingLabel  string // temp buffer for label editing
-	EditingTime   string // temp buffer for time editing
-	EditField     int    // 0 = time, 1 = label
-	AddMode       bool   // true = adding new block
-	DeleteConfirm bool   // true = confirm deletion
-	ConfirmIdx    int    // index to delete
+	Editing     bool
+	EditBlock   int
+	EditFocus   EditorFocus
+	EditHours   int
+	EditMinutes int
+	EditLabel   string
+	AddMode     bool
+
+	// Delete confirmation
+	DeleteConfirm bool
+	ConfirmIdx    int
 }
 
 func NewModel() (Model, error) {
@@ -83,7 +94,7 @@ func NewModel() (Model, error) {
 		SelectedLang:    langIdx,
 		ScheduleEnabled: isTimerEnabled(),
 		IsInstalled:     isServiceInstalled(),
-		APIKey:          loadAPIKey(),
+		IsEnabled:       isTimerEnabled(),
 	}, nil
 }
 
@@ -97,27 +108,29 @@ func colorPulseCmd() tea.Cmd {
 	})
 }
 
-func (m Model) VisibleBlocks() []ScheduleBlock {
-	maxVisible := m.Height - 12
-	if maxVisible < 4 {
-		maxVisible = 4
+// parentOf returns the screen to go back to
+func (m Model) parentOf(screen Screen) Screen {
+	switch screen {
+	case ScreenScheduleEditor:
+		return ScreenDashboard
+	case ScreenLanguageSelector:
+		return ScreenSettings
+	case ScreenSettings:
+		return ScreenDashboard
+	case ScreenInstall:
+		return ScreenDashboard
+	case ScreenAbout:
+		return ScreenDashboard
+	default:
+		return ScreenDashboard
 	}
-	if m.Scroll > len(m.Blocks)-maxVisible {
-		m.Scroll = max(0, len(m.Blocks)-maxVisible)
-	}
-	if m.Scroll < 0 {
-		m.Scroll = 0
-	}
-	end := m.Scroll + maxVisible
-	if end > len(m.Blocks) {
-		end = len(m.Blocks)
-	}
-	return m.Blocks[m.Scroll:end]
 }
 
-func max(a, b int) int {
-	if a > b {
-		return a
+// minBlockTime returns the minimum time (hours, minutes) for a block index
+func (m Model) minBlockTime(idx int) (int, int) {
+	if idx <= 0 {
+		return 0, 0
 	}
-	return b
+	h, min := parseTime(m.Blocks[idx-1].Time)
+	return h, min
 }
