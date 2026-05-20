@@ -13,9 +13,14 @@ set -euo pipefail
 #   - systemd (user mode)
 #
 # Config:
-#   ~/.config/schedule-announcer/schedule.txt — your daily schedule
+#   ~/.config/echoroutine/schedule.txt — your daily schedule
 
-CONFIG_DIR="${HOME}/.config/schedule-announcer"
+# Priority: echoutine (TUI standard) → schedule-announcer (legacy)
+if [ -d "${HOME}/.config/echoroutine" ]; then
+    CONFIG_DIR="${HOME}/.config/echoroutine"
+else
+    CONFIG_DIR="${HOME}/.config/schedule-announcer"
+fi
 SCHEDULE_FILE="${CONFIG_DIR}/schedule.txt"
 LANG_FILE="${CONFIG_DIR}/language.txt"
 STAMP_FILE="/tmp/schedule-announcer-last"
