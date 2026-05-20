@@ -26,6 +26,11 @@ LANG_FILE="${CONFIG_DIR}/language.txt"
 STAMP_FILE="/tmp/schedule-announcer-last"
 LOCK_FILE="/tmp/schedule-announcer.lock"
 
+TEST_MODE=0
+if [ "${1:-}" = "--test" ]; then
+    TEST_MODE=1
+fi
+
 CURRENT_HOUR=$(date +%H)
 CURRENT_MIN=$(date +%M)
 CURRENT_TIME="${CURRENT_HOUR}:${CURRENT_MIN}"
@@ -41,60 +46,94 @@ if [ -f "${LANG_FILE}" ]; then
     fi
 fi
 
-# --- Stamp dedup with flock ---
-# Prevents re-announcing the same minute (defense against race conditions)
-(
-    flock -n 9 || exit 0
+# --- Stamp dedup ---
+if [ -f "${STAMP_FILE}" ]; then
+    LAST=$(cat "${STAMP_FILE}")
+    if [ "${LAST}" = "${CURRENT_TIME}" ]; then
+        exit 0
+    fi
+fi
 
-    if [ -f "${STAMP_FILE}" ]; then
-        LAST=$(cat "${STAMP_FILE}")
-        if [ "${LAST}" = "${CURRENT_TIME}" ]; then
-            exit 0
+# --- Read block times from schedule.txt ---
+if [ ! -f "${SCHEDULE_FILE}" ]; then
+    echo "schedule.txt not found at ${SCHEDULE_FILE}" >&2
+    notify-send --urgency=critical --expire-time=10000 \
+        "⚠️ Schedule Announcer" "schedule.txt no encontrado en ${SCHEDULE_FILE}"
+    exit 1
+fi
+
+# Extract HH:MM from schedule.txt lines like "08:00 - Activity"
+BLOCK_TIMES=$(grep -oP '^\s*\d{2}:\d{2}' "${SCHEDULE_FILE}" | tr '\n' ' ')
+
+if [ -z "${BLOCK_TIMES}" ]; then
+    echo "No valid block times found in ${SCHEDULE_FILE}" >&2
+    notify-send --urgency=critical --expire-time=10000 \
+        "⚠️ Schedule Announcer" "No se encontraron horarios válidos en schedule.txt"
+    exit 1
+fi
+
+MATCH=0
+if [ "${TEST_MODE}" = "1" ]; then
+    # Test mode: find next upcoming block
+    for t in ${BLOCK_TIMES}; do
+        T_HOUR="${t%%:*}"
+        T_MIN="${t##*:}"
+        T_TOTAL=$((10#$T_HOUR * 60 + 10#$T_MIN))
+        NOW_TOTAL=$((10#$CURRENT_HOUR * 60 + 10#$CURRENT_MIN))
+        if [ "${T_TOTAL}" -gt "${NOW_TOTAL}" ]; then
+            CURRENT_TIME="${t}"
+            MATCH=1
+            break
         fi
+    done
+    if [ "${MATCH}" = "0" ]; then
+        # All passed — use first block of tomorrow
+        CURRENT_TIME=$(echo "${BLOCK_TIMES}" | awk '{print $1}')
+        MATCH=1
     fi
-
-    # --- Read block times from schedule.txt ---
-    if [ ! -f "${SCHEDULE_FILE}" ]; then
-        echo "schedule.txt not found at ${SCHEDULE_FILE}" >&2
-        notify-send --urgency=critical --expire-time=10000 \
-            "⚠️ Schedule Announcer" "schedule.txt no encontrado en ${SCHEDULE_FILE}"
-        exit 1
-    fi
-
-    # Extract HH:MM from schedule.txt lines like "08:00 - Activity"
-    BLOCK_TIMES=$(grep -oP '^\s*\d{2}:\d{2}' "${SCHEDULE_FILE}" | tr '\n' ' ')
-
-    if [ -z "${BLOCK_TIMES}" ]; then
-        echo "No valid block times found in ${SCHEDULE_FILE}" >&2
-        notify-send --urgency=critical --expire-time=10000 \
-            "⚠️ Schedule Announcer" "No se encontraron horarios válidos en schedule.txt"
-        exit 1
-    fi
-
-    MATCH=0
+else
     for t in ${BLOCK_TIMES}; do
         if [ "${t}" = "${CURRENT_TIME}" ]; then
             MATCH=1
             break
         fi
     done
+fi
 
-    if [ "${MATCH}" = "0" ]; then
-        exit 0
-    fi
+if [ "${MATCH}" = "0" ]; then
+    exit 0
+fi
 
-    # Mark this minute as announced
+# Don't write stamp in test mode — avoid blocking the real timer
+if [ "${TEST_MODE}" != "1" ]; then
     echo "${CURRENT_TIME}" > "${STAMP_FILE}"
+fi
 
-    # --- Launch OpenCode AI agent ---
-    if ! command -v opencode &>/dev/null; then
-        notify-send --urgency=normal --expire-time=8000 \
-            "⛩️ Schedule: ${CURRENT_TIME}" \
-            "¡Hora del bloque! (OpenCode no disponible — instalalo para mensajes AI + TTS)"
-        exit 1
-    fi
+# --- Launch OpenCode AI agent ---
+if ! command -v opencode &>/dev/null; then
+    notify-send --urgency=normal --expire-time=8000 \
+        "⛩️ Schedule: ${CURRENT_TIME}" \
+        "¡Hora del bloque! (OpenCode no disponible — instalalo para mensajes AI + TTS)"
+    exit 1
+fi
 
-    # Build the prompt with the selected language
+# Build the prompt with the selected language
+if [ "${TEST_MODE}" = "1" ]; then
+    PROMPT=$(cat <<PROMPT_EOF
+This is a TEST of the block announcement system.
+
+The schedule file is attached. The current time is $(date '+%H:%M') but this is a test — announce the next upcoming block after now.
+
+Using the schedule file provided, determine which block is the next upcoming one. If it's 13:00, Mon/Wed/Fri (days 1,3,5) is fitness/break, other days is programming.
+
+Generate a SHORT motivational message (1-2 sentences) in ${ANNOUNCE_LANG} for that specific block. It MUST be creative and unique. No emojis.
+
+1. Use the elevenlabs-tts_text_to_speech MCP tool to speak the message aloud with voice_id h3KZVBOooxHZiKRxnsdE.
+2. Run: notify-send --urgency=normal --expire-time=8000 --icon=face-smile '⛩️ BLOCK_NAME_HERE' 'MESSAGE_HERE'
+3. Reply only: LISTO
+PROMPT_EOF
+)
+else
     PROMPT=$(cat <<PROMPT_EOF
 Block Announcer — schedule change detected at ${CURRENT_TIME}.
 
@@ -107,18 +146,17 @@ Block Announcer — schedule change detected at ${CURRENT_TIME}.
 7. Reply only: LISTO
 PROMPT_EOF
 )
+fi
 
-    if ! opencode run \
-        --dangerously-skip-permissions \
-        --file "${SCHEDULE_FILE}" \
-        --title "block-announcer ${CURRENT_TIME}" \
-        "${PROMPT}"; then
+if ! timeout 60 opencode run \
+    --dangerously-skip-permissions \
+    --file "${SCHEDULE_FILE}" \
+    --title "block-announcer ${CURRENT_TIME}" \
+    "${PROMPT}"; then
 
-        # Fallback: OpenCode failed, send a basic notification
-        notify-send --urgency=normal --expire-time=8000 \
-            "⛩️ Schedule: ${CURRENT_TIME}" \
-            "¡Hora del bloque! (AI no respondió — revisá tu conexión o API key)"
-        exit 1
-    fi
-
-) 9>"${LOCK_FILE}"
+    # Fallback: OpenCode failed, send a basic notification
+    notify-send --urgency=normal --expire-time=8000 \
+        "⛩️ Schedule: ${CURRENT_TIME}" \
+        "¡Hora del bloque! (AI no respondió — revisá tu conexión o API key)"
+    exit 1
+fi
