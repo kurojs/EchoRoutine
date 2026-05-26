@@ -117,6 +117,19 @@ if ! command -v opencode &>/dev/null; then
     exit 1
 fi
 
+# Cleanup: delete the opencode session created by this run on exit
+cleanup_session() {
+    if command -v jq &>/dev/null; then
+        opencode session list --format json 2>/dev/null | jq -r \
+            --arg title "block-announcer ${CURRENT_TIME}" \
+            '.[] | select(.title == $title) | .id' \
+            | while read -r sid; do
+                opencode session delete "$sid" 2>/dev/null || true
+            done
+    fi
+}
+trap cleanup_session EXIT
+
 # Build the prompt with the selected language
 if [ "${TEST_MODE}" = "1" ]; then
     PROMPT=$(cat <<PROMPT_EOF
