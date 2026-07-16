@@ -186,9 +186,17 @@ func isTimerEnabled() bool {
 }
 
 func isServiceInstalled() bool {
-	servicePath := filepath.Join(os.Getenv("HOME"), ".config", "systemd", "user", "block-announcer.service")
-	_, err := os.Stat(servicePath)
-	return err == nil
+	home := os.Getenv("HOME")
+	candidates := []string{
+		filepath.Join(home, ".config", "systemd", "user", "block-announcer.service"),
+		"/usr/lib/systemd/user/block-announcer.service",
+	}
+	for _, p := range candidates {
+		if _, err := os.Stat(p); err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 func installService() (string, error) {
