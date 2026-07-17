@@ -161,7 +161,7 @@ PROMPT_EOF
 )
 fi
 
-if ! timeout 60 opencode run \
+if ! timeout 120 opencode run \
     --dangerously-skip-permissions \
     --file "${SCHEDULE_FILE}" \
     --title "block-announcer ${CURRENT_TIME}" \
